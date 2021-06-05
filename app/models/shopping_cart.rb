@@ -8,12 +8,14 @@
 #  created_at :datetime         not null
 #  updated_at :datetime         not null
 #  active     :boolean          default(FALSE)
+#  status     :integer          default(0)
 #
 class ShoppingCart < ApplicationRecord
   belongs_to :user
   has_many :shopping_cart_products
   has_many :products, through: :shopping_card_products
   
+  enum status: [:created, :canceled, :payed, :completed]
 
   def get_total
     Product.joins(:shopping_cart_products)
@@ -23,6 +25,16 @@ class ShoppingCart < ApplicationRecord
   
   def update_total!
     self.update(total: self.get_total)
+  end
+
+  def payed!
+    ActiveRecord::Base.transaction do
+      self.update!(status: :payed)
+  
+      self.products.select('products.id, products.title, products.code, products.price, products.stock, shopping_cart_products.quantity').each do |product|
+        product.update!(stock: product.stock - product.quantity)
+      end
+    end
   end
 
   def price
