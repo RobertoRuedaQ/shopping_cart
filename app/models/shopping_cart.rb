@@ -11,11 +11,36 @@
 #  status     :integer          default(0)
 #
 class ShoppingCart < ApplicationRecord
+  include AASM
+  
   belongs_to :user
   has_many :shopping_cart_products
   has_many :products, through: :shopping_card_products
   
   enum status: [:created, :canceled, :payed, :completed]
+  aasm column: 'status' do
+    state :created, initial: true
+    state :canceled
+    state :payed
+    state :completed
+
+    before_all_transactions :before_transaction
+    after_all_transactions :after_transaction
+
+    event :cancel do
+      before_transaction :before_cancel
+      after_transaction :after_cancel
+      transitions from: :created, to: :canceled
+    end
+
+    event :pay do
+      transitions from: :created, to: :completed
+    end
+
+    event :complete do
+      transitions from: :payed, to: :completed
+    end
+  end
 
   def get_total
     Product.joins(:shopping_cart_products)
@@ -31,8 +56,11 @@ class ShoppingCart < ApplicationRecord
     ActiveRecord::Base.transaction do
       self.update!(status: :payed)
   
-      self.products.select('products.id, products.title, products.code, products.price, products.stock, shopping_cart_products.quantity').each do |product|
-        product.update!(stock: product.stock - product.quantity)
+      self.products.each do |product|
+        quantity = ShoppingCartProduct.find_by(shopping_cart_id: self.id, product_id: product.id).quantity
+        product.with_lock do 
+          product.update!(stock: product.stock - quantity)
+        end
       end
     end
   end
@@ -49,4 +77,21 @@ class ShoppingCart < ApplicationRecord
   #   .select('COUNT(products.id) AS quantity, products.id, products.title, products.price')
   # end
 
+  private
+
+  def before_cancel
+    puts 'la compra sera cancelada'
+  end
+
+  def after_cancel
+    puts 'la compra fue cancelada'
+  end
+
+  def before_transaction
+    puts 'se va a dar un cambio de estado'
+  end
+
+  def after_transaction
+    puts  'se dio un cambio en los estados'
+  end
 end
